@@ -255,60 +255,67 @@ void intake(double wait_time){
     
 // ------------------- AUTONOMOUS ROUTINE -------------------
 void autonomous() {
- /*
-    //skills matchload
-   basket_release(0.1);
-   
-   drive_cm(114, 80, 80, false, 0); // move forward 60 cm
+
+    //routine ver 1 (30 secs head to head)
+    //0. pre_autonomous or startup 
+    basket_release(0.1);
+    //basket_release(duration);
+    arm_down(0.1);
+    //arm_down(duration);
+
+    // 1. parking to matchloader
+    drive_cm(97.8, 80, 80, false, 0);    // move forward 60 cm
+    // drive_cm (distance, left_motor_speed, right_motor_speed, intake, intake_duration);
+
+    turn_deg(62.1,60,60);
+    // turn_deg (rotation, left_motor_speed, rightmotor_speed);
+    
+
+    // 2. drive forward to matchload then intake
+    drive_cm(31.9,75,75,true,1.25);// adjust time in intake 
+    //1.5 for skills time
+
+     // 3. drive backward rotating to face the long goal 
+    drive_cm(-15,60,60, false ,.2); //. 
+    turn_deg(-126.5,85,85); //.
+    arm_up(0.1);//. 
+
+    // 4. move to long goal then shoot 
+    drive_cm(46.1,60,60,false,0);
+    long_goal(10);
+
+
+     /*
+    //routine ver 2 (30 secs head to head)  
+    // 0 . pre_autonomous 
+    basket_release(0.1);
+
+    // 1. parking to lower center goal 
+    drive_cm(114, 80, 80, false, 0); // move forward 60 cm
     // drive_cm(99,90,90,false,0);
-  turn_deg(-30,80,80);
-   drive_cm(5,50,50,false,0);// adjust time in intake
+    turn_deg(-30,80,80);
+
+    // 2. adjusting to shoot to lower center goal 
+    drive_cm(5,50,50,false,0);// adjust time in intake
     outtake(1);
     drive_cm(-60, 80, 80, false, 0);
 
-
+    // 3. lower middle goal to matchload (unfinished)
    turn_deg(-30,80,80);
    drive_cm(20,80,80, false, 0); 
 
    */
-   //skills matchload
-    basket_release(0.1);
-    arm_down(0.1);
     
-    drive_cm(97.8, 80, 80, false, 0); // move forward 60 cm
-   //  drive_cm(99,90,90,false,0);
-    turn_deg(62.1,60,60);
-    
-  // */
-  // /*
-    drive_cm(31.9,75,75,true,1.25);// adjust time in intake 
-//1.5 for skills time
-  // */
-  // drive_cm(-15,50,50, false, 0);
- //  drive_cm(16, 80,80 , true, 3);
-  // /*
-    //intake(2.2);// .
-
-    drive_cm(-15,60,60, false ,.2); //. 
-    turn_deg(-126.5,85,85); //.
-    arm_up(0.1);//. 
-/*
-   drive_for(.25, 50,true,2.2);//,
-   long_goal(7);//.
-*/
-    drive_cm(46.1,60,60,false,0);
-    long_goal(10);
-
 } 
 
 // ------------------- MAIN -------------------
 int main() {
 
 
-    // Run autonomous routine
+    
     autonomous();
 
-    // Continue monitoring motor temperature indefinitely
+   
     while(true) {
         updateMotorTemperatureColors();
         wait(100, msec);
