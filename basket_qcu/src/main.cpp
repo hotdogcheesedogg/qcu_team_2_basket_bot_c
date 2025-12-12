@@ -1,23 +1,22 @@
 #include "vex.h"
 using namespace vex;
 
-
-
 brain Brain;
+controller controller1(primary);
 
-// ------------------- MOTORS & DRIVE -------------------
-motor right_motor_f  = motor(PORT1,  ratio18_1, true);
-motor right_motor_b  = motor(PORT5,  ratio18_1, true);
-motor_group right_drive_smart(right_motor_f, right_motor_b);
-
-motor left_motor_f = motor(PORT3, ratio18_1, false);
-motor left_motor_b = motor(PORT4, ratio18_1, false);
+// ------------------- MOTORS -------------------
+motor left_motor_f  = motor(PORT1,  ratio18_1, true);
+motor left_motor_b  = motor(PORT5,  ratio18_1, true);
 motor_group left_drive_smart(left_motor_f, left_motor_b);
+
+motor right_motor_f = motor(PORT3, ratio18_1, false);
+motor right_motor_b = motor(PORT4, ratio18_1, false);
+motor_group right_drive_smart(right_motor_f, right_motor_b);
 
 drivetrain driveTrain(left_drive_smart, right_drive_smart,
     319.19, 317.5, 300, mm, 0.2857142857142857);
 
-    // Top long goal
+// Top long goal
 motor motor6 = motor(PORT6, ratio18_1, true);
 // Inside middle
 motor motor7 = motor(PORT7, ratio18_1, true);
@@ -30,150 +29,7 @@ motor motor19 = motor(PORT19, ratio18_1, true);
 
 bool arm = false;
 
-// ------------------- CONFIGURATION -------------------
-const int LEFT_SPEED  = 90;
-const int RIGHT_SPEED = 90;   
-const double SETTLE_TIME = 0.15; 
-
-const double TICKS_PER_CM = 15;     
-const double TICKS_PER_DEG_TURN = 5; 
-
-// ------------------- MOVEMENT FUNCTIONS -------------------
-void drive_cm(double distance_cm, double left_speed, double right_speed, bool intake_bool, double intake_wait) {
-    double ticks = distance_cm * TICKS_PER_CM;
-
-    left_motor_f.setVelocity(left_speed, pct);
-    left_motor_b.setVelocity(left_speed, pct);
-    right_motor_f.setVelocity(right_speed, pct);
-    right_motor_b.setVelocity(right_speed, pct);
-
-    left_drive_smart.spinFor(fwd, ticks, deg, false);
-    right_drive_smart.spinFor(fwd, ticks, deg, true);
-
-    if (intake_bool){
-       motor7.spin(fwd, 100, pct);
-            motor8.spin(fwd, 100, pct);
-            motor20.spin(reverse, 100, pct);
-            
-            wait(intake_wait,sec);
-            motor8.stop();
-            motor7.stop();
-            motor20.stop();
-    }
-    wait(SETTLE_TIME, sec);
-}
-
-void turn_deg(double degrees, double left_speed, double right_speed) {
-    double ticks = fabs(degrees) * TICKS_PER_DEG_TURN;
-    left_speed /= 2;
-    right_speed /= 2;
-
-    left_motor_f.setVelocity(left_speed, pct);
-    left_motor_b.setVelocity(left_speed, pct);
-    right_motor_f.setVelocity(right_speed, pct);
-    right_motor_b.setVelocity(right_speed, pct);
-
-    if(degrees > 0) { 
-        left_drive_smart.spinFor(fwd, ticks, deg, false);
-        right_drive_smart.spinFor(reverse, ticks, deg, true);
-    } else { 
-        left_drive_smart.spinFor(reverse, ticks, deg, false);
-        right_drive_smart.spinFor(fwd, ticks, deg, true);
-    }
-
-    wait(SETTLE_TIME, sec);
-}
-
-void warmup_motors(double duration_sec = 0.1) {
-    left_drive_smart.spinFor(fwd, 10, deg, false);
-    right_drive_smart.spinFor(fwd, 10, deg, true);
-    wait(duration_sec, sec);
-}
-
-void basket_release(double duration = 0.1){
-    motor6.spin(reverse, 100, pct);
-    wait(duration, sec);
-    motor6.stop();
-}
-
-void drive_for(double seconds, int speed, bool intake_bool,double intake_wait) {
-    int direction = (seconds >= 0) ? 1 : -1;
-
-    left_drive_smart.setVelocity(speed, pct);
-    right_drive_smart.setVelocity(speed, pct);
-
-    left_drive_smart.spin(direction == 1 ? fwd : reverse);
-    right_drive_smart.spin(direction == 1 ? fwd : reverse);
-    
-    intake_wait /= 3;
-    double intake_stop= 0.5;
-    if (intake_bool){
-       motor7.spin(fwd, 100, pct);
-            motor8.spin(fwd, 100, pct);
-            motor20.spin(reverse, 100, pct);
-            
-            wait(intake_wait,sec);
-            motor8.stop();
-            motor7.stop();
-            motor20.stop();
-
-            motor7.spin(fwd, 100, pct);
-            motor8.spin(fwd, 100, pct);
-            motor20.spin(reverse, 100, pct);
-
-            wait(intake_stop,sec);
-            motor7.spin(fwd, 100, pct);
-            motor8.spin(fwd, 100, pct);
-            motor20.spin(reverse, 100, pct);
-
-            motor7.spin(fwd, 100, pct);
-            motor8.spin(fwd, 100, pct);
-            motor20.spin(reverse, 100, pct);
-
-            wait(intake_wait,sec);
-             motor8.stop();
-            motor7.stop();
-            motor20.stop();
-
-            motor7.spin(fwd, 100, pct);
-            motor8.spin(fwd, 100, pct);
-            motor20.spin(reverse, 100, pct);
-
-        wait(intake_wait,sec);
-             motor8.stop();
-            motor7.stop();
-            motor20.stop();
-
-    } 
-    
-    wait(fabs(seconds), sec);
-    
-    left_drive_smart.stop(brake);
-    right_drive_smart.stop(brake);
-}
-
-// ------------------- MOTOR TEMP COLOR FUNCTION -------------------
-void updateMotorTemperatureColors() {
-    double temps[] = {
-        left_motor_f.temperature(celsius),
-        left_motor_b.temperature(celsius),
-        right_motor_f.temperature(celsius),
-        right_motor_b.temperature(celsius)
-    };
-
-    double maxTemp = temps[0];
-    for(int i = 1; i < 4; i++) {
-        if(temps[i] > maxTemp) maxTemp = temps[i];
-    }
-
-    if(maxTemp < 45) Brain.Screen.setFillColor(green);
-    else if(maxTemp < 55) Brain.Screen.setFillColor(orange);
-    else Brain.Screen.setFillColor(red);
-
-    Brain.Screen.clearScreen();
-    Brain.Screen.setCursor(1,1);
-    Brain.Screen.print("Max Motor Temp: %.1f C", maxTemp);
-}
+// -------------------- ARM --------------------
 void waitUntilStall(motor &m) {
     wait(200, msec);
     while(true) {
@@ -197,127 +53,132 @@ void toggleArm() {
     }
 }
 
-void arm_up(double wait_seconds){
-    motor19.spin(reverse, 100, pct);
-    waitUntilStall(motor19);       
-    wait(wait_seconds, sec);        
+void matchload(){
+    toggleArm();
+    
 }
 
-void arm_down(double wait_seconds){
-    motor19.spin(fwd, 100, pct);
-    waitUntilStall(motor19);        
-    wait(wait_seconds, sec);     
-}
-
-void long_goal(double wait_time){
+void long_goal(){
            motor6.spin(fwd, 100, pct);
             motor7.spin(reverse, 100, pct);
             motor8.spin(fwd, 100, pct);
             motor20.spin(fwd, 100, pct);
-            wait(wait_time,sec);
-            motor6.stop();
-            motor7.stop();
-            motor8.stop();  
-            motor20.stop();
     }
 
-    void upper_middle(double wait_time){
+    void upper_middle(){
            motor6.spin(reverse, 100, pct);
             motor7.spin(reverse, 100, pct);
             motor8.spin(fwd, 100, pct);
             motor20.spin(fwd, 100, pct);
-            wait(wait_time,sec);
+    }
+  void outtake(){
+           motor8.spin(reverse, 100, pct);
+            motor7.spin(reverse, 100, pct);
+            motor20.spin(fwd, 100, pct);
+    }
+void intake(){
+           motor7.spin(fwd, 100, pct);
+            motor8.spin(fwd, 100, pct);
+            motor20.spin(reverse, 100, pct);
+    }
+// -------------------- DRIVETRAIN --------------------
+void drivetrain_movement() {
+    int forward = controller1.Axis3.position();
+    int turn = controller1.Axis1.position();
+
+    int left_speed = (forward - turn) * 2;
+    int right_speed = (forward + turn) * 2;
+
+    left_drive_smart.spin(fwd, left_speed, pct);
+    right_drive_smart.spin(fwd, right_speed, pct);
+}
+
+// -------------------- MOTOR TEMP MONITOR --------------------
+void updateMotorTemperatureColors() {
+    // Get highest temperature among drivetrain motors
+    double temps[] = {
+        left_motor_f.temperature(celsius),
+        left_motor_b.temperature(celsius),
+        right_motor_f.temperature(celsius),
+        right_motor_b.temperature(celsius)
+    };
+
+    double maxTemp = temps[0];
+    for(int i = 1; i < 4; i++) {
+        if(temps[i] > maxTemp) maxTemp = temps[i];
+    }
+
+    // Change background color based on temperature
+    if(maxTemp < 45) Brain.Screen.setFillColor(green);
+    else if(maxTemp < 55) Brain.Screen.setFillColor(orange);
+    else Brain.Screen.setFillColor(red);
+
+    Brain.Screen.clearScreen();
+    Brain.Screen.setCursor(1,1);
+    Brain.Screen.print("Max Motor Temp: %.1f C", maxTemp);
+}
+
+// -------------------- DRIVER CONTROL --------------------
+void drivers_control() {
+
+    controller1.ButtonDown.pressed(toggleArm);
+    //arm 
+    while(true) {
+        drivetrain_movement();
+
+        if(controller1.ButtonB.pressing()) {
+            motor7.spin(fwd, 100, pct);
+            motor8.spin(fwd, 100, pct);
+            motor20.spin(reverse, 100, pct);
+            //  intake 
+
+        }
+    
+        else if(controller1.ButtonL2.pressing()) {
+            motor8.spin(reverse, 100, pct);
+            motor7.spin(reverse, 100, pct);
+            motor20.spin(fwd, 100, pct);
+            //outtake or low middle
+        }
+  
+        else if(controller1.ButtonR1.pressing()) {
+            motor6.spin(reverse, 100, pct);
+            motor7.spin(reverse, 100, pct);
+            motor8.spin(fwd, 100, pct);
+            motor20.spin(fwd, 100, pct);
+            //upper middle
+        }
+
+        else if(controller1.ButtonR2.pressing()) {
+            motor6.spin(fwd, 100, pct);
+            motor7.spin(reverse, 100, pct);
+            motor8.spin(fwd, 100, pct);
+            motor20.spin(fwd, 100, pct);
+            //long goal
+        }
+ 
+        else {
             motor6.stop();
             motor7.stop();
             motor8.stop();
             motor20.stop();
-    }
-  void outtake(double wait_time){
-           motor8.spin(reverse, 100, pct);
-            motor7.spin(reverse, 100, pct);
-            motor20.spin(fwd, 100, pct);
-            wait(wait_time,sec);
-            motor8.stop();
-            motor7.stop();
-            motor20.stop();
-            
-    }
-void intake(double wait_time){
-           motor7.spin(fwd, 100, pct);
-            motor8.spin(fwd, 100, pct);
-            motor20.spin(reverse, 100, pct);
-            wait(wait_time,sec);
-            motor8.stop();
-            motor7.stop();
-            motor20.stop();
-    }
+        }
 
-    
-// ------------------- AUTONOMOUS ROUTINE -------------------
-void autonomous() {
-
-    //routine ver 1 (30 secs head to head)
-    //0. pre_autonomous or startup 
-    basket_release(0.1);
-    //basket_release(duration);
-    arm_down(0.1);
-    //arm_down(duration);
-
-    // 1. parking to matchloader
-    drive_cm(97.8, 80, 80, false, 0);    // move forward 60 cm
-    // drive_cm (distance, left_motor_speed, right_motor_speed, intake, intake_duration);
-
-    turn_deg(62.1,60,60);
-    // turn_deg (rotation, left_motor_speed, rightmotor_speed);
-    
-
-    // 2. drive forward to matchload then intake
-    drive_cm(31.9,75,75,true,1.25);// adjust time in intake 
-    //1.5 for skills time
-
-     // 3. drive backward rotating to face the long goal 
-    drive_cm(-15,60,60, false ,.2); //. 
-    turn_deg(-126.5,85,85); //.
-    arm_up(0.1);//. 
-
-    // 4. move to long goal then shoot 
-    drive_cm(46.1,60,60,false,0);
-    long_goal(10);
-
-
-     /*
-    //routine ver 2 (30 secs head to head)  
-    // 0 . pre_autonomous 
-    basket_release(0.1);
-
-    // 1. parking to lower center goal 
-    drive_cm(114, 80, 80, false, 0); // move forward 60 cm
-    // drive_cm(99,90,90,false,0);
-    turn_deg(-30,80,80);
-
-    // 2. adjusting to shoot to lower center goal 
-    drive_cm(5,50,50,false,0);// adjust time in intake
-    outtake(1);
-    drive_cm(-60, 80, 80, false, 0);
-
-    // 3. lower middle goal to matchload (unfinished)
-   turn_deg(-30,80,80);
-   drive_cm(20,80,80, false, 0); 
-
-   */
-    
-} 
-
-// ------------------- MAIN -------------------
-int main() {
-
-
-    
-    autonomous();
-
-   
-    while(true) {
+        // Update Brain screen color
         updateMotorTemperatureColors();
+
         wait(100, msec);
     }
+}
+    
+// -------------------- MAIN --------------------
+competition Competition;
+
+int main() {
+    motor19.setMaxTorque(45, pct);
+
+    Competition.drivercontrol(drivers_control);
+    Competition.autonomous([](){});
+
+    while(true) wait(100, msec);
 }
