@@ -21,8 +21,8 @@ motor intake_middle_f = motor(PORT7, ratio18_1, true); // left
 motor long_f = motor(PORT2, ratio18_1, true);
 motor store_basket = motor(PORT9, ratio18_1, true);   // first
 motor long_middle_b = motor(PORT8, ratio18_1, false); // right
-motor unclog = motor(PORT15, ratio18_1, true);
-motor descore = motor(PORT1, ratio18_1, true);
+motor unclog = motor(PORT1, ratio18_1, true);
+motor descore = motor(PORT15, ratio18_1, true);
 motor change_shooting = motor(PORT10, ratio18_1, true);
 vision myVisionSensor = vision(PORT17);
 drivetrain Drivetrain = drivetrain(left_drive_smart, right_drive_smart, 319.19, 320, 320, mm, 1.0);
@@ -70,7 +70,7 @@ void toggleArm()
          waitUntilStall(motor19);
          arm = false;
          */
-        motor19.spinToPosition(-250, degrees, 100, velocityUnits::pct);
+        motor19.spinToPosition(0, degrees, 100, velocityUnits::pct);
         arm = false;
     }
     else
@@ -81,7 +81,7 @@ void toggleArm()
         motor19.stop(hold);
         arm = true;
         */
-        motor19.spinToPosition(0, degrees, 100, velocityUnits::pct);
+        motor19.spinToPosition(-240, degrees, 100, velocityUnits::pct);
         arm = true;
     }
 }
@@ -93,19 +93,19 @@ void arm_up(double wait_seconds)
 
 void arm_down(double wait_seconds)
 {
-    motor19.spinToPosition(250, degrees, 100, velocityUnits::pct);
+    motor19.spinToPosition(-200, degrees, 100, velocityUnits::pct);
 
     wait(wait_seconds, sec);
 }
 void arm_down_skills(double wait_seconds)
 {
-    motor19.spinToPosition(200, degrees, 100, velocityUnits::pct);
+    motor19.spinToPosition(-200, degrees, 70, velocityUnits::pct);
 
     wait(wait_seconds, sec);
 }
 void arm_up_skills(double wait_seconds)
 {
-    motor19.spinToPosition(0, degrees, 100, velocityUnits::pct);
+    motor19.spinToPosition(0, degrees, 70, velocityUnits::pct);
 
     wait(wait_seconds, sec);
 }
@@ -277,7 +277,7 @@ bool shoot_l = false;
 }*/
 
 int lastPressTime = 0;
-double baseAngle = 75;
+double baseAngle = 0;
 // this is the pressing with angle fix will be removed
 /*
 void toggleShootingM()
@@ -429,11 +429,11 @@ void deployExtensionsions()
 {
     change_shooting.spinToPosition(75, degrees, 100, velocityUnits::pct);
 
-    intake_middle_f.spin(reverse, 100, velocityUnits::pct);
-    store_basket.spin(reverse, 100, velocityUnits::pct);
-    long_middle_b.spin(reverse, 100, velocityUnits::pct);
+    intake_middle_f.spin(fwd, 100, velocityUnits::pct);
+    store_basket.spin(fwd, 100, velocityUnits::pct);
+    long_middle_b.spin(fwd, 100, velocityUnits::pct);
 
-    wait(1.5, sec);
+    wait(.3, sec);
 
     intake_middle_f.stop();
     store_basket.stop();
@@ -534,6 +534,7 @@ void drivercontrol()
     bool increasing = true;
     bool lastXState = false;
 
+    change_shooting.spinToPosition(75, degrees, 100, velocityUnits::pct);
     change_shooting.setPosition(0, degrees);
 
     controller1.ButtonRight.pressed(toggleArm);
@@ -546,6 +547,7 @@ void drivercontrol()
     // controller1.ButtonR1.released(toggleShootingL);
     controller1.ButtonR1.pressed(toggleShootingL);
     controller1.ButtonA.pressed(drivetrainLock);
+    
     while (true)
     {
 
@@ -1119,85 +1121,971 @@ void intake(double wait_time, double speed)
     long_middle_b.stop();
 }
 
+const float Pi = 3.14159;
+const double wheelDiameter = 4.0; 
+
+double inchesToDegrees(double inches) {
+  double wheelCircumference = Pi * wheelDiameter;
+  double rotations = inches / wheelCircumference;
+  return rotations * 360.0; // degrees
+}
+void driveForInches(double maxSpeed, double inches, bool smoothStop, bool intake_bool, double intake_wait) {
+  double targetDegrees = inchesToDegrees(inches);
+
+  left_drive_smart.resetPosition();
+  right_drive_smart.resetPosition();
+
+  const double accelRate = 2.0;
+  const double decelStart = 0.6;
+
+  double currentSpeed = 0;
+  double decelPoint = targetDegrees * decelStart;
+
+  timer intakeTimer;
+  bool intakeRunning = false;
+
+  if (intake_bool) {
+    intake_middle_f.spin(reverse, 100, pct);
+    store_basket.spin(reverse, 100, pct);
+    long_middle_b.spin(reverse, 100, pct);
+
+    intakeTimer.reset();
+    intakeRunning = true;
+  }
+
+  while (true) {
+    double avgPos =
+      (fabs(left_drive_smart.position(degrees)) +
+       fabs(right_drive_smart.position(degrees))) / 2.0;
+
+    // STOP INTAKE AFTER TIME
+    if (intakeRunning && intake_wait > 0 &&
+        intakeTimer.time(sec) >= intake_wait) {
+      intake_middle_f.stop();
+      store_basket.stop();
+      long_middle_b.stop();
+      intakeRunning = false;
+    }
+
+    // ACCELERATION
+    if (avgPos < decelPoint) {
+      currentSpeed += accelRate;
+      if (currentSpeed > maxSpeed)
+        currentSpeed = maxSpeed;
+    }
+    // DECELERATION
+    else {
+      double remaining = targetDegrees - avgPos;
+      double denom = targetDegrees - decelPoint;
+      if (denom < 1) denom = 1;
+
+      currentSpeed = maxSpeed * (remaining / denom);
+
+      if (currentSpeed < 10)
+        currentSpeed = 10;
+    }
+
+    // FORWARD COMMAND
+    double forwardSpeedCommand = currentSpeed;
+
+    // END CONDITION
+    if (avgPos >= targetDegrees - 2)
+      break;
+
+    left_drive_smart.spin(forward, forwardSpeedCommand, pct);
+    right_drive_smart.spin(forward, forwardSpeedCommand, pct);
+
+    wait(10, msec);
+  }
+
+  // SMOOTH STOP
+  double lastSpeedCommand = fmax(currentSpeed, 10.0);
+
+  while (lastSpeedCommand > 0) {
+    left_drive_smart.spin(forward, lastSpeedCommand, pct);
+    right_drive_smart.spin(forward, lastSpeedCommand, pct);
+
+    lastSpeedCommand -= 2;
+    if (lastSpeedCommand < 0)
+      lastSpeedCommand = 0;
+
+    wait(10, msec);
+  }
+
+  if (intakeRunning) {
+    intake_middle_f.stop();
+    store_basket.stop();
+    long_middle_b.stop();
+  }
+
+  left_drive_smart.stop();
+  right_drive_smart.stop();
+}
+void driveBackwardForInches(double maxSpeed, double inches, bool smoothStop, bool intake_bool, double intake_wait) {
+  double targetDegrees = inchesToDegrees(inches);
+
+  left_drive_smart.resetPosition();
+  right_drive_smart.resetPosition();
+
+  const double accelRate = 2.0;
+  const double decelStart = 0.6;
+
+  double currentSpeed = 0;
+  double decelPoint = targetDegrees * decelStart;
+
+  timer intakeTimer;
+  bool intakeRunning = false;
+
+  if (intake_bool) {
+    intake_middle_f.spin(reverse, 100, pct);
+    store_basket.spin(reverse, 100, pct);
+    long_middle_b.spin(reverse, 100, pct);
+
+    intakeTimer.reset();
+    intakeRunning = true;
+  }
+
+  while (true) {
+    double avgPos =
+      (fabs(left_drive_smart.position(degrees)) +
+       fabs(right_drive_smart.position(degrees))) / 2.0;
+
+    if (intakeRunning && intake_wait > 0 &&
+        intakeTimer.time(sec) >= intake_wait) {
+      intake_middle_f.stop();
+      store_basket.stop();
+      long_middle_b.stop();
+      intakeRunning = false;
+    }
+
+    // ACCELERATION
+    if (avgPos < decelPoint) {
+      currentSpeed += accelRate;
+      if (currentSpeed > maxSpeed)
+        currentSpeed = maxSpeed;
+    }
+    // DECELERATION
+    else {
+      double remaining = targetDegrees - avgPos;
+      double denom = targetDegrees - decelPoint;
+      if (denom < 1) denom = 1;
+
+      currentSpeed = maxSpeed * (remaining / denom);
+
+      if (currentSpeed < 10)
+        currentSpeed = 10;
+    }
+
+    double backwardSpeedCommand = -currentSpeed;
+
+    if (avgPos >= targetDegrees - 2)
+      break;
+
+    left_drive_smart.spin(forward, backwardSpeedCommand, pct);
+    right_drive_smart.spin(forward, backwardSpeedCommand, pct);
+
+    wait(10, msec);
+  }
+
+  // SMOOTH STOP
+  double lastSpeedCommand = fmin(-currentSpeed, -10.0);
+
+  while (lastSpeedCommand < 0) {
+    left_drive_smart.spin(forward, lastSpeedCommand, pct);
+    right_drive_smart.spin(forward, lastSpeedCommand, pct);
+
+    lastSpeedCommand += 2;
+    if (lastSpeedCommand > 0)
+      lastSpeedCommand = 0;
+
+    wait(10, msec);
+  }
+
+  if (intakeRunning) {
+    intake_middle_f.stop();
+    store_basket.stop();
+    long_middle_b.stop();
+  }
+
+  left_drive_smart.stop();
+  right_drive_smart.stop();
+}
+
 void autonomous()
 
 {
-  // skills ruigan v1
-    drivetrainLock();
-    descore.setPosition(0, degrees);
-    motor19.setPosition(0, degrees);
-    descore.spinToPosition(400, degrees, 100, velocityUnits::pct);
-    deployExtensionsions();
+     drivetrainLock();
+        descore.setPosition(0, degrees);
+        motor19.setPosition(0, degrees);
+        change_shooting.setPosition(0, degrees);
+        deployExtensionsions();
 
-    driveSmooth(-240, 60, 60, 0, 0, false, 0);
-    wait(0.5,sec)
-    driveSmooth(17, 70, 0, 0, 0, false, 0);
-    wait(0.5,sec)
-    driveSmooth(-85, 70, 70, 0, 0, false, 0);
-    wait(0.5,sec)
-    driveSmooth(-25, 70, 0, 0, 0, false, 0);
-    wait(0.5,sec)
-    driveSmooth(240, 60, 60, 0, 0, false, 0);
-    wait(0.5,sec)
-    turnSmooth(-60, 70, 0, 0);
-  
+        arm_down_skills(0.1);
+        driveForInches(40, 12, false, true, 2);
+        intake(1, 100);
 
-  
+        Drivetrain.setTurnVelocity(50, percent);
+        Drivetrain.turnFor(right, 10, degrees);
+        wait(1, sec);
+        arm_up_skills(0.1);
 
-    // skills ruigan v2
+        driveBackwardForInches(40,8, false, true, 2.5);
+        wait(0.5, sec);
+        Drivetrain.turnFor(right, 29, degrees);
+        wait(0.5, sec);
+        driveBackwardForInches(70, 50, false, true, 2.5);
+        intake(1, 100);
+       
+        driveForInches(70, 32, false, true, 1);
+        wait(0.5, sec);
+        Drivetrain.turnFor(right, 37, degrees);
+        wait(0.5, sec);
+        driveBackwardForInches(70, 55, false, false, 0);
+        Drivetrain.turnFor(left, 15, degrees);
+        wait(0.5, sec);
+        driveForInches(50, 18, false, false, 0);
+        upper_middle(5, 50);
+        change_shooting.spinToPosition(5, degrees, 50, velocityUnits::pct);
+        change_shooting.spinToPosition(75, degrees, 100, velocityUnits::pct);
 
-    descore.setPosition(0, degrees);
-    motor19.setPosition(0, degrees);
+      /*  
+       
+        driveSmooth(80, 80, 80, 0, 40, false, 0);
+        wait(0.5, sec);
+        Drivetrain.turnFor(right, 36, degrees);
+        wait(0.5, sec);
+        driveSmooth(-132.5, 70, 70, 0, 40, false, 0);
+        wait(0.5, sec);
 
-    deployExtensionsions();
+        driveSmooth(15, 0, 40, 0, 0, false, 0);
+        driveSmooth(14, 60, 60, 0, 0, false, 0);
+        upper_middle(5, 50);
+        change_shooting.spinToPosition(5, degrees, 50, velocityUnits::pct);
+        change_shooting.spinToPosition(75, degrees, 100, velocityUnits::pct);
 
-    driveSmooth(-95, 60, 60, 0, 0, true, .5);
-    wait(0.5,sec)
-    arm_down(0.1);
+    // blue alliance 2v2 lower middle
+ /*     drivetrainLock();
+     Drivetrain.setTurnVelocity(50, percent);
+     descore.setPosition(0, degrees);
+     motor19.setPosition(0, degrees);
+    wingOut();
+     deployExtensionsions();
+     arm_down(0.1);
+
+    driveBackwardForInches(80,23.5, false, false, 0);
     wait(0.5, sec);
-    arm_up(0.1);
-    wait(1, sec);
-
-    driveSmooth(-16, 0, 70, 0, 0, false, 0);
-    wait(0.5,sec)
-    driveSmooth(-5, 30, 30, 0, 0, false, 0);
-    arm_down(0.1);
-    driveSmooth(60, 30, 30, 0, 0, true, 1);
-
-  
-
-      // ruigan skills v3
-    drivetrainLock();
-    descore.setPosition(0, degrees);
-    motor19.setPosition(0, degrees);
-    change_shooting.setPosition(0, degrees);
-    deployExtensionsions();
-
-    arm_down_skills(0.1);
-    driveSmooth(25, 30, 30, 0, 0, true, 2);
+     Drivetrain.setTurnVelocity(50, percent);   
+     wait(0.5, sec);
+     Drivetrain.turnFor(left, 39, degrees);
+     wait(0.5, sec);
+   driveBackwardForInches(40, 6.5,true, false, 0);
     intake(1, 100);
-    Drivetrain.setTurnVelocity(60, percent); 
-    Drivetrain.turnFor(right, 10, degrees);
+     
+    wait(1.1, sec);
+    driveForInches(102, 22,false, true, 1.5);
+    long_goal(1.6, 100);
 
-    wait(2, sec);
+        arm_up(0.1);
+        driveSmooth(-39, 20, 70, 0, 0, false, 0);
+        wait(0.5, sec);
+         
+        wingDown();
+        // driveSmooth(distance, leftSpeed, rightSpeed, accel, decel, isIntakeUsed?, for how long?);
+        driveSmooth(63, 30, 70, 0, 0, false, 0);
+        wait(1, sec);
+        // driveSmooth(distance, leftSpeed, rightSpeed, accel, decel, isIntakeUsed?, for how long?);
+        driveSmooth(34, 70, 70, 0, 0, false, 0);
+    change_shooting.spinToPosition(0, degrees, 100, velocityUnits::pct);
+      arm_down(0.1);
+// blue alliance 2v2 lower middle
+ /*      drivetrainLock();
+     Drivetrain.setTurnVelocity(50, percent);
+     descore.setPosition(0, degrees);
+     motor19.setPosition(0, degrees);
+    wingOut();
+     deployExtensionsions();
+     arm_down(0.1);
+
+    driveBackwardForInches(80,21.5, false, false, 0);
+    wait(0.5, sec);
+     Drivetrain.setTurnVelocity(50, percent);   
+     wait(0.5, sec);
+     Drivetrain.turnFor(left, 39, degrees);
+     wait(0.5, sec);
+   driveBackwardForInches(40, 6,true, false, 0);
+    intake(1, 100);
+     
+    wait(1, sec);
+    driveForInches(98, 22,false, true, 1.5);
+    long_goal(1.6, 100);
+
+        arm_up(0.1);
+        driveSmooth(-39, 20, 70, 0, 0, false, 0);
+        wait(0.5, sec);
+         
+        wingDown();
+        // driveSmooth(distance, leftSpeed, rightSpeed, accel, decel, isIntakeUsed?, for how long?);
+        driveSmooth(63, 30, 70, 0, 0, false, 0);
+        wait(1, sec);
+        // driveSmooth(distance, leftSpeed, rightSpeed, accel, decel, isIntakeUsed?, for how long?);
+        driveSmooth(34, 70, 70, 0, 0, false, 0);
+    change_shooting.spinToPosition(0, degrees, 100, velocityUnits::pct);
+      arm_down(0.1);
+
+    //red alliacne 2v2 uppermiddle 
+   /*   drivetrainLock();
+     Drivetrain.setTurnVelocity(50, percent);
+     descore.setPosition(0, degrees);
+     motor19.setPosition(0, degrees);
+    wingOut();
+     deployExtensionsions();
+     arm_down(0.1);
+
+    driveBackwardForInches(80,23.5, false, false, 0);
+    wait(0.5, sec);
+     Drivetrain.setTurnVelocity(50, percent);   
+     wait(0.5, sec);
+     Drivetrain.turnFor(right, 39, degrees);
+     wait(0.5, sec);
+    driveBackwardForInches(40, 7,true, false, 0);
+    intake(1, 100);
+     
+    wait(1, sec);
+    driveForInches(89, 22,false, true, 1.5);
+    long_goal(1.6, 100);
+
+        arm_up(0.1);
+        driveSmooth(-39, 20, 70, 0, 0, false, 0);
+        wait(0.5, sec);
+         
+        wingDown();
+        // driveSmooth(distance, leftSpeed, rightSpeed, accel, decel, isIntakeUsed?, for how long?);
+        driveSmooth(62, 30, 70, 0, 0, false, 0);
+        wait(1, sec);
+        // driveSmooth(distance, leftSpeed, rightSpeed, accel, decel, isIntakeUsed?, for how long?);
+        driveSmooth(34, 70, 70, 0, 0, false, 0);
+    change_shooting.spinToPosition(0, degrees, 100, velocityUnits::pct);
+      arm_down(0.1);
+
+
+    
+      // updated skills v3
+   /*     drivetrainLock();
+        descore.setPosition(0, degrees);
+        motor19.setPosition(0, degrees);
+        change_shooting.setPosition(0, degrees);
+        deployExtensionsions();
+
+        arm_down_skills(0.1);
+        driveSmooth(25, 30, 30, 0, 0, true, 2);
+        intake(1, 100);
+        Drivetrain.setTurnVelocity(50, percent);
+        Drivetrain.turnFor(right, 10, degrees);
+        wait(1, sec);
+        arm_up_skills(0.1);
+        driveSmooth(-15, 30, 30, 0, 0, true, 2.5);
+        wait(0.5, sec);
+
+        Drivetrain.turnFor(right, 27, degrees);
+        wait(0.5, sec);
+        driveSmooth(-110.3, 70, 70, 0, 0, true, 2.5);
+        intake(3, 100);
+
+        driveSmooth(80, 80, 80, 0, 40, false, 0);
+        wait(0.5, sec);
+        Drivetrain.turnFor(right, 36, degrees);
+        wait(0.5, sec);
+        driveSmooth(-132.5, 70, 70, 0, 40, false, 0);
+        wait(0.5, sec);
+
+        driveSmooth(15, 0, 40, 0, 0, false, 0);
+        driveSmooth(14, 60, 60, 0, 0, false, 0);
+        upper_middle(5, 50);
+        change_shooting.spinToPosition(5, degrees, 50, velocityUnits::pct);
+        change_shooting.spinToPosition(75, degrees, 100, velocityUnits::pct);
+     
+    // going to collect the 2 blocks
+     
+    Drivetrain.setTurnVelocity(30, percent);
+
+    driveSmooth(-10, 10, 10, 0, 0, false, 0);
+    wait(0.5, sec);
+    Drivetrain.turnFor(left, 23, degrees);
+    wait(0.5, sec);
+    driveSmooth(-45, 30, 30, 0, 0, false, 0);
+    wait(0.5, sec);
+    Drivetrain.turnFor(left, 8, degrees);
+    driveSmooth(-.5, 10, 10, 0, 0, false, 0);
+    arm_down_skills(0.1);
+
+    // shooting the 2 blocks
+    driveSmooth(15, 10, 10, 0, 0, true, 1.8);
+    driveSmooth(-15, 10, 10, 0, 0, true, 1.8);
+    driveSmooth(.5, 10, 10, 0, 0, false, 0);
+    Drivetrain.turnFor(right, 8, degrees);
+    wait(0.5, sec);
+    driveSmooth(45, 30, 30, 0, 0, true, 2);
+    wait(0.5, sec);
+    Drivetrain.turnFor(right, 22, degrees);
+    wait(0.5, sec);
+    driveSmooth(10, 10, 10, 0, 0, false, 0);
+
+    upper_middle(3, 60);
+    change_shooting.spinToPosition(5, degrees, 50, velocityUnits::pct);
+    change_shooting.spinToPosition(75, degrees, 100, velocityUnits::pct);
+   
+    // from middle to parking
+    Drivetrain.setTurnVelocity(30, percent);
+    driveSmooth(-10, 10, 10, 0, 0, false, 0);
+    wait(0.5, sec);
+    Drivetrain.turnFor(left, 50, degrees);
     arm_up_skills(0.1);
-    driveSmooth(-15, 30, 30, 0, 0, true, 2.5);
-    wait(0.5, sec);
-    Drivetrain.turnFor(right, 24, degrees);
-    wait(0.5, sec);
-    driveSmooth(-110.3, 80, 80, 0, 0, true, 2);
-    intake(3, 100);
-    driveSmooth(80, 80, 80, 0, 40, false, 0);
-    wait(0.5, sec);
-    Drivetrain.turnFor(right, 35, degrees);
-    wait(0.5, sec);
-    driveSmooth(-140, 80, 80, 0, 40, false, 0);
-    wait(0.5, sec);
 
-    driveSmooth(15, 0, 40, 0, 0, false, 0);
-    driveSmooth(10, 60, 60, 0, 0, false, 0);
+    driveSmooth(-150, 70, 70, 0, 40, true, 4);
+    Drivetrain.turnFor(left, 35, degrees);
+    driveSmooth(-53, 70, 70, 0, 20, false, 0);
 
-    upper_middle(5, 50);
+    /*
+    driveSmooth(-8, 10, 10, 0, 0, false, 0);
+
+    driveSmooth(-5, 20, 0, 0, 0, false, 0);
+    */
+    // Drivetrain.turnFor(right, 40, degrees);
+    // Drivetrain.turnFor(left, 20, degrees);
+
+    // placeholder for pre-auton setup
+    // 2v2 blue alliance upper middle side
+    // ruigan transform / setup
+   /*
+     drivetrainLock();
+     Drivetrain.setTurnVelocity(50, percent);
+     descore.setPosition(0, degrees);
+     motor19.setPosition(0, degrees);
+    wingOut();
+     deployExtensionsions();
+     arm_down(0.1);
+
+     // start of routine move to matchload
+     //  driveSmooth(distance, leftSpeed, rightSpeed, accel, decel, isIntakeUsed?, for how long?);
+     driveSmooth(-68, 90, 90, 0, 0, false, 0);
+     // driveSmooth(-68.2, 90,90, 0, 0, false, 0);
+     wait(.5, sec);
+     //   driveSmooth(20, 80, 0, 0, 0, false, 0);
+     // turnSmooth(distance, speed, accel, decel);
+    // turnSmooth(54.4, 60, 0, 20); // close to 90 degrees //60 if matchlaod down
+    Drivetrain.turnFor(right, 36, degrees);
+
+     wait(.1, sec);
+     // driveSmooth(distance, leftSpeed, rightSpeed, accel, decel, isIntakeUsed?, for how long?);
+     driveSmooth(-25, 50, 50, 0, 26, true, 1.5);
+     // intake(duration, speed);
+   
+
+     // move to long goal
+     wait(.1, sec);
+     // driveSmooth(distance, leftSpeed, rightSpeed, accel, decel, isIntakeUsed?, for how long?);
+     driveSmooth(52, 90, 90, 0, 10, true, .5);
+     // long_goal(duration, speed);
+     long_goal(1.5, 100);
+
+     // descore upper middle side
+
+    
+    // driveSmooth(distance, leftSpeed, rightSpeed, accel, decel, isIntakeUsed?, for how long?);
+         
+       
+         arm_up(0.1);
+        driveSmooth(-39, 20, 70, 0, 0, false, 0);
+        wait(0.5, sec);
+         
+        wingDown();
+        // driveSmooth(distance, leftSpeed, rightSpeed, accel, decel, isIntakeUsed?, for how long?);
+        driveSmooth(62, 30, 70, 0, 0, false, 0);
+        wait(1, sec);
+        // driveSmooth(distance, leftSpeed, rightSpeed, accel, decel, isIntakeUsed?, for how long?);
+        driveSmooth(34, 70, 70, 0, 0, false, 0);
+    change_shooting.spinToPosition(0, degrees, 100, velocityUnits::pct);
+      arm_down(0.1);
+
+
+      
+
+
+      //red alliance 2v2
+ */
+/*
+    drivetrainLock();
+     Drivetrain.setTurnVelocity(50, percent);
+     descore.setPosition(0, degrees);
+     motor19.setPosition(0, degrees);
+    wingOut();
+     deployExtensionsions();
+     arm_down(0.1);
+
+     // start of routine move to matchload
+     //  driveSmooth(distance, leftSpeed, rightSpeed, accel, decel, isIntakeUsed?, for how long?);
+     driveSmooth(-52, 70, 70, 0, 0, false, 0);
+     // driveSmooth(-68.2, 90,90, 0, 0, false, 0);
+     wait(1, sec);
+
+     //   driveSmooth(20, 80, 0, 0, 0, false, 0);
+     // turnSmooth(distance, speed, accel, decel);
+    // turnSmooth(54.4, 60, 0, 20); // close to 90 degrees //60 if matchlaod down
+    Drivetrain.turnFor(right, 39, degrees);
+
+     wait(.1, sec);
+     // driveSmooth(distance, leftSpeed, rightSpeed, accel, decel, isIntakeUsed?, for how long?);
+     driveSmooth(-21, 50, 50, 0, 26, true, 1.5);
+     // intake(duration, speed);
+   
+
+     // move to long goal
+     wait(.1, sec);
+     // driveSmooth(distance, leftSpeed, rightSpeed, accel, decel, isIntakeUsed?, for how long?);
+     driveSmooth(63, 70, 70, 0, 10, true, .5);
+     // long_goal(duration, speed);
+     long_goal(1.5, 100);
+
+     // descore upper middle side
+
+    
+    // driveSmooth(distance, leftSpeed, rightSpeed, accel, decel, isIntakeUsed?, for how long?);
+         
+       
+         arm_up(0.1);
+        driveSmooth(-39, 20, 70, 0, 0, false, 0);
+        wait(0.5, sec);
+         
+        wingDown();
+        // driveSmooth(distance, leftSpeed, rightSpeed, accel, decel, isIntakeUsed?, for how long?);
+        driveSmooth(62, 30, 70, 0, 0, false, 0);
+        wait(1, sec);
+        // driveSmooth(distance, leftSpeed, rightSpeed, accel, decel, isIntakeUsed?, for how long?);
+        driveSmooth(34, 70, 70, 0, 0, false, 0);
+    change_shooting.spinToPosition(0, degrees, 100, velocityUnits::pct);
+      arm_down(0.1);
+
+    // skills ruigan middle goal
+    /*
+      descore.setPosition(0, degrees);
+           motor19.setPosition(0, degrees);
+
+           deployExtensionsions();
+
+
+            driveSmooth(-95, 60,60, 0, 0, true, .5);
+
+
+            arm_down(0.1);
+            wait(0.5, sec);
+            arm_up(0.1);
+            wait(1, sec);
+
+           driveSmooth(-16, 0, 70, 0, 0, false, 0);
+           driveSmooth(-5, 30, 30, 0, 0, false, 0);
+           arm_down(0.1);
+           driveSmooth(60, 30, 30, 0, 0, true, 1);
+        // skills ruigan
+        /*   drivetrainLock();
+           descore.setPosition(0, degrees);
+           motor19.setPosition(0, degrees);
+           descore.spinToPosition(400, degrees, 100, velocityUnits::pct);
+           deployExtensionsions();
+
+
+            driveSmooth(-240, 60,60, 0, 0, false, 0);
+
+
+       */
+    // driveSmooth(17, 70,0, 0, 0, false, 0);
+
+    // driveSmooth(-85, 70,70, 0, 0, false, 0);
+
+    // driveSmooth(-25, 70,0, 0, 0, false, 0);
+
+    // driveSmooth(240, 60,60, 0, 0, false, 0);
+
+    // turnSmooth(-60, 70, 0, 0);
+
+    /* wingOut();
+     wait(1, sec);
+     Brain.Screen.printAt(10, 50, "Pos: %f", descore.position(degrees));
+
+     wingDown();
+     wait(1, sec);
+     Brain.Screen.printAt(10, 70, "Pos: %f", descore.position(degrees));
+     wait(1, sec);
+
+
+
+     /*
+  //Routine with matchload
+
+
+
+
+  //basket setup
+  //skills routine 1
+
+
+  /*
+  //routine 1 skills
+  drivetrainLock();
+  deployExtensionsions();
+  driveSmooth(60, 90, 40, 42, false, 0);
+  turnSmooth(80, 80, 50, 45);
+  driveSmooth(72.9, 90, 40, 42, false, 0);
+  turnSmooth(80, 80, 50, 45);
+  arm_down(0.1);
+  driveSmooth(53., 90, 40, 42, false, 0);
+  intake(3,100);
+  driveSmooth(-40, 90, 40, 42, false,0);
+  turnSmooth(170, 80, 50, 42);
+
+  //skills routine 2
+  */
+    // skills routine slot 6 middle goal
+    /*
+    drivetrainLock();
+    deployExtensionsions();
+    driveSmooth(60, 90, 40, 42, false, 0);
+    turnSmooth(80, 80, 50, 45);
+    driveSmooth(73, 90, 40, 42, false, 0);
+    turnSmooth(80, 80, 50, 45);
+    arm_down(0.1);
+    driveSmooth(53, 90, 40, 42, false, 0);
+
+    driveSmooth(-40, 90, 40, 42, false,0);
+    turnSmooth(80, 80, 50, 39.5);
+    driveSmooth(234.7, 90, 40, 42, true, 2.25);
+    wait(0.5,sec);
+    turnSmooth(-79.5, 80, 50, 40);
+    driveSmooth(44, 90, 40, 42, false, 0);
+    driveSmooth(-30, 80, 40, 42, false, 0);
+    turnSmooth(-121, 80, 50, 40);
+    arm_up(0.1);
+
+    driveSmooth(120, 90, 40, 42, true, 2);
+    outtake(8,60);
+
+
+
+    driveSmooth(-120, 90, 40, 42, false, 0);
+    arm_down(0.1);
+    turnSmooth(130, 80, 50, 40);
+    driveSmooth(30, 80,40, 42, false, 0);
+
+    /*
+    driveSmooth(-40, 90, 40, 42, false,0);
+    turnSmooth(-80, 80, 50, 40);
+    driveSmooth(234.7, 90, 40, 42, true, 2.25);
+    turnSmooth(80, 80, 50, 40);
+
+
+
+    */
+
+    // skills long goal slot 4 polish
+    /*
+
+    drivetrainLock();
+    deployExtensionsions();
+    driveSmooth(60, 90, 40, 42, false, 0);
+    turnSmooth(80, 80, 50, 45);
+    driveSmooth(73, 90, 40, 42, false, 0);
+    turnSmooth(80, 80, 50, 45);
+    arm_down(0.1);
+    driveSmooth(53, 90, 40, 42, true, 5);
+    intake(1,100);
+    driveSmooth(-40, 90, 40, 42, true,1);
+
+    turnSmooth(180, 80, 50, 45);
+
+    arm_up(0.1);
+    driveSmooth(28,80,40,42,true,3.0);
+
+    long_goal(8.0,100);
+    intake(3,100);
+    long_goal(4.0,100);
+    driveSmooth(-30, 90, 40, 42, false, 0);
+    turnSmooth(-110, 80, 50, 45);
+    driveSmooth(133, 90, 40, 0, true,4.0);
+
+    /*driveSmooth(50, 90, 40, 42, true, 2.0);
+    turnSmooth(-80, 80, 50, 45);
+    driveSmooth(40, 90, 40, 42, true, 2.0);
+    turnSmooth(80, 80, 50, 45);
+    driveSmooth(50, 90, 40, 0, true,4.0);//kulang
+    */
+
+    // skills long goal slot 5 revision of turn x
+    /**/
+
+    // drivetrainLock();
+    // deployExtensionsions();
+    /*
+    driveSmooth(-100, 100,100, 0, 0, false, 0);
+    wait(2,sec);
+    turnSmooth(54.5, 100, 0, 0); // close to 90 degrees //60 if matchlaod down
+    wait(2,sec);
+    turnSmooth(54.5, 100, 0, 0);
+    wait(2,sec);
+    driveSmooth(30, 100,100, 0, 0, false, 0);
+    /*drive_cm(-60, 90, 80, 0, false);
+    wait(2,sec);
+
+    /*turnSmooth(80, 80, 50, 45);
+    driveSmooth(73, 90, 40, 42, false, 0);
+    turnSmooth(80, 80, 50, 45);
+    arm_down(0.1);
+    driveSmooth(53, 90, 40, 42, true, 5);
+
+    driveSmooth(-40, 90, 40, 42, true,1);
+
+    turnSmooth1(179, 80, 50, 45,true,2.0);
+
+    arm_up(0.1);
+    driveSmooth(28,80,40,42,true,3.0);
+
+    long_goal(8.0,100);
+    intake(3,100);
+    long_goal(4.0,100);
+    driveSmooth(-30, 100, 40, 42, false, 0);
+
+
+
+
+
+
+    //turnSmooth(-60, 80, 50, 45);
+
+
+    turnSmooth(-110, 80, 50, 45);
+    driveSmooth(133, 90, 40, 0, true,7.0);
+
+
+
+
+    /*
+    // red alliance revised 2v2   slot 3
+    drivetrainLock();
+    deploy2v2Extensionsions();
+    driveSmooth(60, 90, 40, 42, false, 0);
+    turnSmooth(80, 80, 50, 45);
+    driveSmooth(73, 90, 40, 42, false, 0);
+    turnSmooth(80, 80, 50, 45);
+    arm_down(0.1);
+    driveSmooth(53, 90, 40, 42, false, 0);
+
+    driveSmooth(-40, 90, 40, 42, true,1);
+    intake(.5,100);
+    turnSmooth(180, 80, 50, 45);
+
+    arm_up(0.1);
+    driveSmooth(28,80,40,42,true,2.0);
+    long_goal(4.0,100);
+
+    driveSmooth(-30, 90, 40, 42, false, 0);
+    turnSmooth(-35, 80, 50, 45);
+    wingDown();
+    drive_cm(78, 100,100, false, 0);
+
+    */
+    /*
+    // blue alliance revised 2v2 long goal slot 1 working
+    // red alliance revised 2v2
+    drivetrainLock();
+    deploy2v2Extensionsions();
+    driveSmooth(60, 90, 40, 42, false, 0);
+    turnSmooth(80, 80, 50, 45);
+    driveSmooth(73, 90, 40, 42, false, 0);
+    turnSmooth(80, 80, 50, 45);
+    arm_down(0.1);
+    driveSmooth(52.9, 90, 40, 42, false, 0);
+
+    driveSmooth(-40, 90, 40, 42, true,1);
+    turnSmooth(180.5, 80, 50, 45);
+
+    arm_up(0.1);
+    driveSmooth(28,80,40,42,true,2.0);
+    long_goal(4.0,100);
+
+    driveSmooth(-30, 100, 0, 42, false, 0);
+    turnSmooth(-37.7, 80, 50, 45);
+    wingDown();
+    drive_cm(78, 100,100, false, 0);
+
+
+    /*
+    */
+    // 2v2 long goal  revised turn
+    /*
+    drivetrainLock();
+    deploy2v2Extensionsions();
+    driveSmooth(60, 90, 40, 42, false, 0);
+    turnSmooth(80, 80, 50, 45);
+    driveSmooth(73, 90, 40, 42, false, 0);
+    turnSmooth(80, 80, 50, 45);
+    arm_down(0.1);
+    driveSmooth(52.9, 90, 40, 42, false, 0);
+
+    driveSmooth(-40, 90, 40, 42, true,1);
+    turnSmooth1(180.5, 80, 50, 45,true,3.0);
+
+    arm_up(0.1);
+    driveSmooth(28,80,40,42,true,2.0);
+    long_goal(4.0,100);
+
+    driveSmooth(-30, 100, 0, 42, false, 0);
+    turnSmooth(-37.7, 80, 50, 45);
+    wingDown();
+    drive_cm(78, 100,100, false, 0);
+
+    /*
+    //routine 2v2 red alliance  xxxxxxxxx
+
+
+
+    drivetrainLock();
+    deploy2v2Extensionsions();
+    drive_cm(60, 50,50, false, 0); //drive forward to clear wall
+    wait(.5,sec);
+
+    turnSmooth(80, 80, 50, 45);
+
+    drive_cm(78, 50,50, false, 0); //drive to align with matchload
+    wait(.5,sec);
+    turnSmooth(83, 80, 50, 45);
+    arm_down(0.1);
+
+
+    drive_cm(46, 40,40,false, 0); //drive to matchload and intake
+    intake(1,100);
+    driveSmooth(-32, 80, 40, 42, true,3); //reverse from matchload
+
+
+    turnSmooth(173, 80, 50, 45);
+
+    arm_up(0.1);
+    drive_cm(31,80,80,true,2.0);
+    long_goal(2.0,100);
+
+    driveSmooth(-30,80,40,42,false,0);
+    turnSmooth(173, 80, 50, 45);
+
+
+    /*
+
+    arm_down(0.1);
+    drive_cm(60,80,80,true, 3);
+    driveSmooth(-30,90,40,42,true, 1);
+    turnSmooth(-40,80,50,45);
+    outtake(2.5,100);
+
+    /*
+    driveSmooth(-30,90,40,42,false, 0);
+    turnSmooth(40, 80, 50 ,45);
+    arm_up(0.1);
+    outtake(2.5,100);
+
+    turnSmooth(-40,80,50,45);
+    arm_down(0.1);
+    drive_cm(30,90,90,false,0);
+    intake(4,100);
+
+
+    driveSmooth(-30, 90, 40, 42, false,0); //reverse from matchload
+    turnSmooth(173, 80, 50, 45);
+    arm_up(0.1);
+    drive_cm(30,90,90,true,2.0);
+    long_goal(3.0,100);
+
+
+    driveSmooth(-30,90,40,42,false,0);
+
+    */
+    /*
+
+    //2v2 blue alliance middle goal  slot 2
+
+    drivetrainLock();
+    deploy2v2Extensionsions();
+    driveSmooth(60, 90, 0, 42, false, 0);
+
+
+    turnSmooth(80, 80, 50, 45);
+    driveSmooth(73, 90, 40, 42, false, 0);
+
+    turnSmooth(80, 80, 50, 45);
+    arm_down(0.1);
+
+    driveSmooth(53, 90, 40, 42, false, 0);
+
+
+    driveSmooth(-40, 100, 40, 42, true,.1);
+
+    //turnSmooth(112.5, 80, 50, 45);
+    turnSmooth(115.8, 80, 50, 45);
+    wait(.5,sec);
+    driveSmooth(114,80,40,42,true,4.0);
+
+    upper_middle(6.0,80);
+
+    //*/
+
+    // 2v2 red alliance middle goal  slot 4 new field no.2
+    /*
+    drivetrainLock();
+    deploy2v2Extensionsions();
+    driveSmooth(60, 90, 0, 42, false, 0);
+
+
+    turnSmooth(80, 80, 50, 45);
+    driveSmooth(73, 90, 40, 42, false, 0);
+
+    turnSmooth(80, 80, 50, 45);
+    arm_down(0.1);
+
+    driveSmooth(53, 90, 40, 42, false, 0);
+
+
+    driveSmooth(-40, 100, 40, 42, true,.1);
+
+    //turnSmooth(112.5, 80, 50, 45);
+    turnSmooth(116.8, 80, 50, 45);
+    wait(.5,sec);
+    driveSmooth(114.5,80,40,42,true,2.0);
+
+    upper_middle(6.0,80);
+
+    /*
+    */
+    /*
+    //2v2 red alliance middle goal  slot 4
+    drivetrainLock();
+    deploy2v2Extensionsions();
+    driveSmooth(60, 90, 0, 42, false, 0);
+
+
+    turnSmooth(80, 80, 50, 45);
+    driveSmooth(73, 90, 40, 42, false, 0);
+
+    turnSmooth(80, 80, 50, 45);
+    arm_down(0.1);
+
+    driveSmooth(53, 90, 40, 42, false, 0);
+
+
+    driveSmooth(-40, 100, 40, 42, true,.3);
+
+    //turnSmooth(112.5, 80, 50, 45);
+    turnSmooth(112.8, 80, 50, 45);
+    wait(.5,sec);
+    driveSmooth(115,80,0,50,true,2.0);
+
+    upper_middle(4.0,100);
+    //*/
+    
 }
 // -------------------- MAIN --------------------
 competition Competition;
